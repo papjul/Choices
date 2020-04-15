@@ -786,20 +786,38 @@ class Choices {
         choiceListFragment,
       );
     }
+    const { activeItems, disabledChoices, choices } = this._store;
+    const canAddItem = this._canAddItem(activeItems, this.input.value);
 
     // If we have choices to show
     if (
       choiceListFragment.childNodes &&
       choiceListFragment.childNodes.length > 0
     ) {
-      const { activeItems } = this._store;
-      const canAddItem = this._canAddItem(activeItems, this.input.value);
-
       // ...and we can select them
       if (canAddItem.response) {
         // ...append them and highlight the first choice
+        //    or add canAddItem notice
         this.choiceList.append(choiceListFragment);
-        this._highlightChoice();
+        if (
+          this._isSelectMultipleElement &&
+          this.config.addItems &&
+          this.input.value &&
+          !existsInArray(disabledChoices, this.input.value)
+        ) {
+          const notice = this._getTemplate('notice', canAddItem.notice);
+          this.choiceList.append(notice);
+        } else if (
+          this._isSelectOneElement &&
+          this.config.addItems &&
+          this.input.value &&
+          !existsInArray(choices, this.input.value)
+        ) {
+          const notice = this._getTemplate('notice', canAddItem.notice);
+          this.choiceList.append(notice);
+        } else {
+          this._highlightChoice();
+        }
       } else {
         const notice = this._getTemplate('notice', canAddItem.notice);
         this.choiceList.append(notice);
@@ -809,7 +827,9 @@ class Choices {
       let dropdownItem;
       let notice;
 
-      if (this._isSearching) {
+      if (this.config.addItems && canAddItem.response) {
+        dropdownItem = this._getTemplate('notice', canAddItem.notice);
+      } else if (this._isSearching) {
         notice =
           typeof this.config.noResultsText === 'function'
             ? this.config.noResultsText()
@@ -824,7 +844,6 @@ class Choices {
 
         dropdownItem = this._getTemplate('notice', notice, 'no-choices');
       }
-
       this.choiceList.append(dropdownItem);
     }
   }
@@ -1255,20 +1274,19 @@ class Choices {
             ? this.config.uniqueItemText(value)
             : this.config.uniqueItemText;
       }
+    }
 
-      if (
-        this._isTextElement &&
-        this.config.addItems &&
-        canAddItem &&
-        typeof this.config.addItemFilter === 'function' &&
-        !this.config.addItemFilter(value)
-      ) {
-        canAddItem = false;
-        notice =
-          typeof this.config.customAddItemText === 'function'
-            ? this.config.customAddItemText(value)
-            : this.config.customAddItemText;
-      }
+    if (
+      this.config.addItems &&
+      canAddItem &&
+      typeof this.config.addItemFilter === 'function' &&
+      !this.config.addItemFilter(value)
+    ) {
+      canAddItem = false;
+      notice =
+        typeof this.config.customAddItemText === 'function'
+          ? this.config.customAddItemText(value)
+          : this.config.customAddItemText;
     }
 
     return {
@@ -1398,7 +1416,7 @@ class Choices {
 
   _onKeyDown(event: KeyboardEvent): void {
     const { keyCode } = event;
-    const { activeItems } = this._store;
+    const { activeItems, choices, disabledChoices } = this._store;
     const hasFocusedInput = this.input.isFocussed;
     const hasActiveDropdown = this.dropdown.isActive;
     const hasItems = this.itemList.hasChildren();
@@ -1434,7 +1452,22 @@ class Choices {
       case A_KEY:
         return this._onSelectKey(event, hasItems);
       case ENTER_KEY:
-        return this._onEnterKey(event, activeItems, hasActiveDropdown);
+        // all choices are not creatable
+        if (this._isSelectOneElement) {
+          return this._onEnterKey(
+            event,
+            activeItems,
+            choices,
+            hasActiveDropdown,
+          );
+        }
+
+        return this._onEnterKey(
+          event,
+          activeItems,
+          disabledChoices,
+          hasActiveDropdown,
+        );
       case ESC_KEY:
         return this._onEscapeKey(hasActiveDropdown);
       case UP_KEY:
@@ -1510,24 +1543,14 @@ class Choices {
   _onEnterKey(
     event: KeyboardEvent,
     activeItems: Item[],
+    nonproducibleChoices: Choice[],
     hasActiveDropdown: boolean,
   ): void {
     const { target } = event;
     const { ENTER_KEY: enterKey } = KEY_CODES;
     const targetWasButton =
       target && (target as HTMLElement).hasAttribute('data-button');
-
-    if (this._isTextElement && target && (target as HTMLInputElement).value) {
-      const { value } = this.input;
-      const canAddItem = this._canAddItem(activeItems, value);
-
-      if (canAddItem.response) {
-        this.hideDropdown(true);
-        this._addItem({ value });
-        this._triggerChange(value);
-        this.clearInput();
-      }
-    }
+    let highlightedChoice: null | HTMLElement = null;
 
     if (targetWasButton) {
       this._handleButtonAction(activeItems, target as HTMLElement);
@@ -1535,7 +1558,7 @@ class Choices {
     }
 
     if (hasActiveDropdown) {
-      const highlightedChoice = this.dropdown.getChild(
+      highlightedChoice = this.dropdown.getChild(
         `.${this.config.classNames.highlightedState}`,
       );
 
@@ -1551,6 +1574,18 @@ class Choices {
     } else if (this._isSelectOneElement) {
       this.showDropdown();
       event.preventDefault();
+    }
+
+    if (!highlightedChoice && target && (target as HTMLInputElement).value) {
+      const { value } = this.input;
+      const canAddItem = this._canAddItem(activeItems, value);
+
+      if (canAddItem.response && !existsInArray(nonproducibleChoices, value)) {
+        this.hideDropdown(true);
+        this._setChoiceOrItem({ value });
+        this._triggerChange(value);
+        this.clearInput();
+      }
     }
   }
 
@@ -1617,6 +1652,8 @@ class Choices {
           this.choiceList.scrollToChildElement(nextEl, directionInt);
         }
         this._highlightChoice(nextEl);
+      } else if (this._isSelectMultipleElement && this.config.addItems) {
+        this.unhighlightAll();
       }
 
       // Prevent default to maintain cursor position whilst
