@@ -753,7 +753,16 @@ class Choices {
   }
 
   _renderChoices(): void {
-    const { activeGroups, activeChoices } = this._store;
+    const {
+      activeItems,
+      disabledChoices,
+      choices,
+      activeGroups,
+      activeChoices,
+    } = this._store;
+    const { value } = this.input;
+
+    const canAddItem = this._canAddItem(activeItems, value);
     let choiceListFragment = document.createDocumentFragment();
 
     this.choiceList.clear();
@@ -786,39 +795,43 @@ class Choices {
         choiceListFragment,
       );
     }
-    const { activeItems, disabledChoices, choices } = this._store;
-    const canAddItem = this._canAddItem(activeItems, this.input.value);
 
     // If we have choices to show
     if (
       choiceListFragment.childNodes &&
       choiceListFragment.childNodes.length > 0
     ) {
+      let addNotice = false;
       // ...and we can select them
       if (canAddItem.response) {
-        // ...append them and highlight the first choice
-        //    or add canAddItem notice
+        // ...append them
         this.choiceList.append(choiceListFragment);
-        if (
-          this._isSelectMultipleElement &&
-          this.config.addItems &&
-          this.input.value &&
-          !existsInArray(disabledChoices, this.input.value)
-        ) {
-          const notice = this._getTemplate('notice', canAddItem.notice);
-          this.choiceList.append(notice);
-        } else if (
-          this._isSelectOneElement &&
-          this.config.addItems &&
-          this.input.value &&
-          !existsInArray(choices, this.input.value)
-        ) {
-          const notice = this._getTemplate('notice', canAddItem.notice);
-          this.choiceList.append(notice);
+        // ...handle case that items can be added
+        if (this.config.addItems && value) {
+          const isInChoices = existsInArray(choices, value);
+          addNotice = true;
+          if (
+            this._isSelectMultipleElement &&
+            existsInArray(disabledChoices, value)
+          ) {
+            // adding disabled element is disabled here, so remove message
+            addNotice = false;
+          } else if (this._isSelectOneElement && isInChoices) {
+            // adding existing element is disabled here, so remove message
+            addNotice = false;
+          }
+          // ...highlight the first choice when element exists in choices
+          if (isInChoices) {
+            this._highlightChoice();
+          }
         } else {
+          // ...highlight the first choice
           this._highlightChoice();
         }
       } else {
+        addNotice = true;
+      }
+      if (addNotice) {
         const notice = this._getTemplate('notice', canAddItem.notice);
         this.choiceList.append(notice);
       }
@@ -827,7 +840,7 @@ class Choices {
       let dropdownItem;
       let notice;
 
-      if (this.config.addItems && canAddItem.response) {
+      if (this.config.addItems && canAddItem.response && value) {
         dropdownItem = this._getTemplate('notice', canAddItem.notice);
       } else if (this._isSearching) {
         notice =
@@ -1452,7 +1465,7 @@ class Choices {
       case A_KEY:
         return this._onSelectKey(event, hasItems);
       case ENTER_KEY:
-        // all choices are not creatable
+        // existing choices are not producable
         if (this._isSelectOneElement) {
           return this._onEnterKey(
             event,
@@ -1474,7 +1487,22 @@ class Choices {
       case PAGE_UP_KEY:
       case DOWN_KEY:
       case PAGE_DOWN_KEY:
-        return this._onDirectionKey(event, hasActiveDropdown);
+        // don't activate deselect for existing choices
+        if (this._isSelectOneElement) {
+          return this._onDirectionKey(
+            event,
+            activeItems,
+            choices,
+            hasActiveDropdown,
+          );
+        }
+
+        return this._onDirectionKey(
+          event,
+          activeItems,
+          disabledChoices,
+          hasActiveDropdown,
+        );
       case DELETE_KEY:
       case BACK_KEY:
         return this._onDeleteKey(event, activeItems, hasFocusedInput);
@@ -1596,7 +1624,12 @@ class Choices {
     }
   }
 
-  _onDirectionKey(event: KeyboardEvent, hasActiveDropdown: boolean): void {
+  _onDirectionKey(
+    event: KeyboardEvent,
+    activeItems: Item[],
+    nonproducibleChoices: Choice[],
+    hasActiveDropdown: boolean,
+  ): void {
     const { keyCode, metaKey } = event;
     const {
       DOWN_KEY: downKey,
@@ -1652,8 +1685,16 @@ class Choices {
           this.choiceList.scrollToChildElement(nextEl, directionInt);
         }
         this._highlightChoice(nextEl);
-      } else if (this._isSelectMultipleElement && this.config.addItems) {
-        this.unhighlightAll();
+      } else if (this.config.addItems) {
+        // can unselect all items for creating new options
+        const { value } = this.input;
+        const canAddItem = this._canAddItem(activeItems, value);
+        if (
+          canAddItem.response &&
+          !existsInArray(nonproducibleChoices, value)
+        ) {
+          this.unhighlightAll();
+        }
       }
 
       // Prevent default to maintain cursor position whilst
