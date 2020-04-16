@@ -385,7 +385,7 @@
     </div>
     <script>
       document.addEventListener('DOMContentLoaded', function() {
-        const choicesBasic = new Choices('#choices-basic');
+        const choicesBasic = new Choices('#choices-basic', { addItems: false });
 
         document
           .querySelector('button.disable')
@@ -548,7 +548,10 @@
           'Choice 2',
         );
 
-        new Choices('#choices-search-by-label', { searchFields: ['label'] });
+        new Choices('#choices-search-by-label', {
+          searchFields: ['label'],
+          addItems: false,
+        });
 
         const newDestroyInitChoices = new Choices('#choices-new-destroy-init');
         document
