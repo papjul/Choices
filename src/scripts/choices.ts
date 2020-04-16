@@ -1602,9 +1602,16 @@ class Choices {
     } else if (this._isSelectOneElement) {
       this.showDropdown();
       event.preventDefault();
+
+      return;
     }
 
-    if (!highlightedChoice && target && (target as HTMLInputElement).value) {
+    if (
+      this.config.addItems &&
+      !highlightedChoice &&
+      target &&
+      (target as HTMLInputElement).value
+    ) {
       const { value } = this.input;
       const canAddItem = this._canAddItem(activeItems, value);
 
@@ -1630,7 +1637,7 @@ class Choices {
     nonproducibleChoices: Choice[],
     hasActiveDropdown: boolean,
   ): void {
-    const { keyCode, metaKey } = event;
+    const { keyCode, metaKey, target } = event;
     const {
       DOWN_KEY: downKey,
       PAGE_UP_KEY: pageUpKey,
@@ -1685,7 +1692,11 @@ class Choices {
           this.choiceList.scrollToChildElement(nextEl, directionInt);
         }
         this._highlightChoice(nextEl);
-      } else if (this.config.addItems) {
+      } else if (
+        this.config.addItems &&
+        target &&
+        (target as HTMLInputElement).value
+      ) {
         // can unselect all items for creating new options
         const { value } = this.input;
         const canAddItem = this._canAddItem(activeItems, value);
